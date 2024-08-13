@@ -11,7 +11,7 @@ const avatarBaseurl = `https://avatar.iran.liara.run`;
 app.get("/", (req, res) => {
   return res.json({
     msg: "My UMBY Profile API!",
-    data: {
+    result: {
       paths: [
         {
           uri: "/student/{nim}",
