@@ -107,7 +107,7 @@ app.get("/student/:nim", async (req, res) => {
   } catch (error) {
     console.log(error);
 
-    return res.json({
+    return res.status(500).json({
       msg: "Failed to get student data",
     });
   }
