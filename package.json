@@ -4,7 +4,8 @@
   "main": "api/index.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon api/index"
+    "dev": "nodemon api/index",
+    "start": "node api/index"
   },
   "keywords": [],
   "author": "ibnumardini@gmail.com",
