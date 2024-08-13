@@ -12,7 +12,7 @@ app.get("/", (req, res) => {
   return res.json({
     msg: "My UMBY Profile API!",
     result: {
-      paths: [
+      routes: [
         {
           uri: "/student/{nim}",
           desc: "Get student data",
