@@ -39,7 +39,9 @@ const searchPddiktiStudent = async ({ nim }) => {
 
   const result = await axios.get(encodeURI(url));
 
-  const student = result.data.filter(({ nim: n }) => n == nim);
+  const student = resultSlice.filter(
+    ({ nim: id, nama_pt: uni }) => id == nim && uni == UMBY
+  );
 
   if (!student.length) {
     throw new Error("student not found");
