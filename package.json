@@ -1,10 +1,10 @@
 {
   "name": "my-umby-profile-api",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "api/index.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon server"
+    "dev": "nodemon api/index"
   },
   "keywords": [],
   "author": "ibnumardini@gmail.com",
