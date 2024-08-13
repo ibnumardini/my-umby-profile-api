@@ -39,7 +39,7 @@ const searchPddiktiStudent = async ({ nim }) => {
 
   const result = await axios.get(encodeURI(url));
 
-  const student = resultSlice.filter(
+  const student = result.filter(
     ({ nim: id, nama_pt: uni }) => id == nim && uni == UMBY
   );
 
