@@ -47,7 +47,7 @@ const searchPddiktiStudent = async ({ nim }) => {
     throw new Error("student not found");
   }
 
-  return student?.[0];
+  return student[0];
 };
 
 const getPddiktiStudentDetail = async ({ id }) => {
