@@ -41,7 +41,9 @@ export const getStudentPict = async (req, res) => {
       timeout: 5000,
     });
   } catch (error) {
-    result = await axios.get(`${env.avatarBaseurl}/username?username=${nim}`, {
+    const code = nim[0] + nim[nim.length - 1];
+
+    result = await axios.get(`${env.avatarBaseurl}/username?username=${code}`, {
       responseType: "arraybuffer",
       timeout: 5000,
     });
