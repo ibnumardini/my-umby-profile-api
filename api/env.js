@@ -6,6 +6,7 @@ const env = {
   umbyPhotoPath: process.env.UMBY_PHOTO_PATH,
   pddiktiBaseurl: process.env.PDDIKTI_BASEURL,
   avatarBaseurl: process.env.AVATAR_BASEURL,
+  xApiKey: process.env.X_API_KEY,
 };
 
 export default env;

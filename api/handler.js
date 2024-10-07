@@ -55,7 +55,9 @@ export const getStudentPict = async (req, res) => {
 const searchPddiktiStudent = async ({ nim }) => {
   const url = `${env.pddiktiBaseurl}/api/pencarian/mhs/${nim} ${UMBY}`;
 
-  const result = await axios.get(encodeURI(url));
+  const result = await axios.get(encodeURI(url), {
+    headers: { "x-api-key": env.xApiKey },
+  });
 
   const student = result.data.filter(
     ({ nim: id, nama_pt: uni }) => id == nim && uni == UMBY
@@ -71,7 +73,9 @@ const searchPddiktiStudent = async ({ nim }) => {
 const getPddiktiStudentDetail = async ({ id }) => {
   const url = `${env.pddiktiBaseurl}/api/detail/mhs/${id}`;
 
-  const result = await axios.get(encodeURI(url));
+  const result = await axios.get(encodeURI(url), {
+    headers: { "x-api-key": env.xApiKey },
+  });
 
   return result.data;
 };
