@@ -5,8 +5,8 @@ const env = {
   siaUmbyBaseurl: process.env.SIA_UMBY_BASEURL,
   umbyPhotoPath: process.env.UMBY_PHOTO_PATH,
   pddiktiBaseurl: process.env.PDDIKTI_BASEURL,
+  pddiktiOrigin: process.env.PDDIKTI_ORIGIN,
   avatarBaseurl: process.env.AVATAR_BASEURL,
-  xApiKey: process.env.X_API_KEY,
 };
 
 export default env;
