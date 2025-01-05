@@ -98,6 +98,7 @@ export const getStudent = async (req, res) => {
       university: student.nama_pt,
       major: student.nama_prodi,
       regist_type: studentDetail.jenis_daftar,
+      regist_date: studentDetail.tanggal_masuk,
       gender,
       level: studentDetail.jenjang,
       status: studentDetail.status_saat_ini,
