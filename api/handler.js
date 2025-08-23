@@ -1,13 +1,14 @@
 import axios from "axios";
 import Joi from "joi";
 import env from "./env.js";
+import { successResponse, failedResponse } from "./response.js";
 
 const UMBY = "UNIVERSITAS MERCU BUANA YOGYAKARTA";
 
 export const welcome = (req, res) => {
-  return res.json({
+  return successResponse(res, {
     msg: "My UMBY Profile API!",
-    result: {
+    data: {
       routes: [
         {
           uri: "/student/batch",
@@ -33,21 +34,37 @@ const generateStudentSiaPictUrl = ({ nim }) => {
 export const getStudentPict = async (req, res) => {
   const { nim } = req.params;
 
+  if (!/^[0-9]{9}$/.test(nim)) {
+    return failedResponse(res, {
+      status: 400,
+      msg: "NIM must be exactly 9 digits",
+    });
+  }
+
   const siaPictUrl = generateStudentSiaPictUrl({ nim });
   let result;
 
   try {
     result = await axios.get(siaPictUrl, {
       responseType: "arraybuffer",
-      timeout: 5000,
+      timeout: 10000,
     });
   } catch (error) {
-    const code = nim[0] + nim[nim.length - 1];
-
-    result = await axios.get(`${env.avatarBaseurl}/username?username=${code}`, {
-      responseType: "arraybuffer",
-      timeout: 5000,
-    });
+    try {
+      const code = nim[0] + nim[nim.length - 1];
+      result = await axios.get(
+        `${env.avatarBaseurl}/username?username=${code}`,
+        {
+          responseType: "arraybuffer",
+          timeout: 10000,
+        }
+      );
+    } catch (fallbackError) {
+      return failedResponse(res, {
+        status: 404,
+        msg: "Student picture not found",
+      });
+    }
   }
 
   return res
@@ -60,6 +77,7 @@ const searchPddiktiStudent = async ({ nim }) => {
 
   const result = await axios.get(encodeURI(url), {
     headers: { Origin: env.pddiktiOrigin },
+    timeout: 10000,
   });
 
   const student = result.data.filter(
@@ -74,6 +92,7 @@ const getPddiktiStudentDetail = async ({ id }) => {
 
   const result = await axios.get(encodeURI(url), {
     headers: { Origin: env.pddiktiOrigin },
+    timeout: 10000,
   });
 
   return result.data;
@@ -81,13 +100,18 @@ const getPddiktiStudentDetail = async ({ id }) => {
 
 export const getStudentBatch = async (req, res) => {
   const schema = Joi.object({
-    nims: Joi.array().items(Joi.string().min(9)).min(1).required(),
+    nims: Joi.array()
+      .items(Joi.string().pattern(/^[0-9]{9}$/))
+      .min(1)
+      .max(50)
+      .required(),
   });
 
   const { error, value } = schema.validate(req.body);
   if (error) {
-    return res.status(400).json({
-      msg: error.message,
+    return failedResponse(res, {
+      status: 400,
+      msg: error.details[0].message,
     });
   }
 
@@ -119,14 +143,33 @@ export const getStudentBatch = async (req, res) => {
       })
     );
 
-    return res.json({
+    return successResponse(res, {
       msg: "Successfully obtained student data",
-      result: students,
+      data: students,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Error in getStudentBatch:", {
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+    });
 
-    return res.status(500).json({
+    if (error.code === "ECONNABORTED") {
+      return failedResponse(res, {
+        status: 408,
+        msg: "Request timeout while fetching student data",
+      });
+    }
+
+    if (error.response && error.response.status === 404) {
+      return failedResponse(res, {
+        status: 404,
+        msg: "Student data service unavailable",
+      });
+    }
+
+    return failedResponse(res, {
+      status: 500,
       msg: "Failed to get student data",
     });
   }
