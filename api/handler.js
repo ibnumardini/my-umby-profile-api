@@ -1,7 +1,13 @@
 import axios from "axios";
 import Joi from "joi";
-import env from "./env.js";
-import { successResponse, failedResponse } from "./response.js";
+import env from "./config/env.js";
+import { successResponse, failedResponse } from "./helper/response.js";
+import {
+  getCachedStudentSearch,
+  setCachedStudentSearch,
+  getCachedStudentDetail,
+  setCachedStudentDetail,
+} from "./helper/cache.js";
 
 const UMBY = "UNIVERSITAS MERCU BUANA YOGYAKARTA";
 
@@ -67,12 +73,28 @@ export const getStudentPict = async (req, res) => {
     }
   }
 
-  return res
+  const response = res
     .header("content-type", result.headers["content-type"])
+    .header("Cross-Origin-Resource-Policy", "cross-origin")
+    .header("Access-Control-Allow-Origin", "*")
+    .header("Cache-Control", "public, max-age=86400") // Cache for 24 hours
     .send(result.data);
+
+  // Clean up arraybuffer from memory after response
+  if (result.data && result.data.byteLength) {
+    result.data = null;
+  }
+
+  return response;
 };
 
 const searchPddiktiStudent = async ({ nim }) => {
+  // Check cache first
+  const cachedStudent = getCachedStudentSearch(nim);
+  if (cachedStudent !== undefined) {
+    return cachedStudent;
+  }
+
   const url = `${env.pddiktiBaseurl}/pencarian/mhs/${nim} ${UMBY}`;
 
   const result = await axios.get(encodeURI(url), {
@@ -84,16 +106,30 @@ const searchPddiktiStudent = async ({ nim }) => {
     ({ nim: id, nama_pt: uni }) => id == nim && uni == UMBY
   );
 
-  return student[0] || null;
+  const foundStudent = student[0] || null;
+
+  // Cache the result
+  setCachedStudentSearch(nim, foundStudent);
+
+  return foundStudent;
 };
 
 const getPddiktiStudentDetail = async ({ id }) => {
+  // Check cache first
+  const cachedDetail = getCachedStudentDetail(id);
+  if (cachedDetail !== undefined) {
+    return cachedDetail;
+  }
+
   const url = `${env.pddiktiBaseurl}/detail/mhs/${id}`;
 
   const result = await axios.get(encodeURI(url), {
     headers: { Origin: env.pddiktiOrigin },
     timeout: 10000,
   });
+
+  // Cache the result
+  setCachedStudentDetail(id, result.data);
 
   return result.data;
 };
@@ -116,32 +152,61 @@ export const getStudentBatch = async (req, res) => {
   }
 
   try {
-    const students = await Promise.all(
-      value.nims.map(async (nim) => {
-        const student = await searchPddiktiStudent({ nim });
-        if (!student) return { found: false, nim };
+    // Process NIMs in smaller batches to avoid overwhelming external APIs
+    const batchSize = 10;
+    const nimBatches = [];
 
-        const studentDetail = await getPddiktiStudentDetail({ id: student.id });
+    for (let i = 0; i < value.nims.length; i += batchSize) {
+      nimBatches.push(value.nims.slice(i, i + batchSize));
+    }
 
-        const pict = `${req.protocol}://${req.get("host")}/student/pict/${nim}`;
-        const gender = studentDetail.jenis_kelamin == "L" ? "Male" : "Female";
+    const students = [];
 
-        return {
-          found: true,
-          nim,
-          name: student.nama,
-          university: student.nama_pt,
-          major: student.nama_prodi,
-          regist_type: studentDetail.jenis_daftar,
-          regist_date: studentDetail.tanggal_masuk,
-          gender,
-          level: studentDetail.jenjang,
-          status: studentDetail.status_saat_ini,
-          generation: studentDetail.tahun_masuk,
-          pict_url: pict,
-        };
-      })
-    );
+    for (const batch of nimBatches) {
+      const batchResults = await Promise.all(
+        batch.map(async (nim) => {
+          try {
+            const student = await searchPddiktiStudent({ nim });
+            if (!student) return { found: false, nim };
+
+            const studentDetail = await getPddiktiStudentDetail({
+              id: student.id,
+            });
+
+            const pict = `${req.protocol}://${req.get(
+              "host"
+            )}/student/pict/${nim}`;
+            const gender =
+              studentDetail.jenis_kelamin == "L" ? "Male" : "Female";
+
+            return {
+              found: true,
+              nim,
+              name: student.nama,
+              university: student.nama_pt,
+              major: student.nama_prodi,
+              regist_type: studentDetail.jenis_daftar,
+              regist_date: studentDetail.tanggal_masuk,
+              gender,
+              level: studentDetail.jenjang,
+              status: studentDetail.status_saat_ini,
+              generation: studentDetail.tahun_masuk,
+              pict_url: pict,
+            };
+          } catch (error) {
+            console.error(`Error processing NIM ${nim}:`, error.message);
+            return { found: false, nim, error: "Processing failed" };
+          }
+        })
+      );
+
+      students.push(...batchResults);
+
+      // Small delay between batches to be respectful to external API
+      if (nimBatches.indexOf(batch) < nimBatches.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
 
     return successResponse(res, {
       msg: "Successfully obtained student data",
