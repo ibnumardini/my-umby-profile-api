@@ -5,7 +5,7 @@ import { successResponse, failedResponse } from "./response.js";
 
 const UMBY = "UNIVERSITAS MERCU BUANA YOGYAKARTA";
 
-export const welcome = (req, res) => {
+export const welcome = (_req, res) => {
   return successResponse(res, {
     msg: "My UMBY Profile API!",
     data: {
