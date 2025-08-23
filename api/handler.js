@@ -2,15 +2,20 @@ import axios from "axios";
 import Joi from "joi";
 import env from "./config/env.js";
 import { successResponse, failedResponse } from "./helper/response.js";
+import { logError } from "./helper/logger.js";
 import {
-  getCachedStudentSearch,
-  setCachedStudentSearch,
-  getCachedStudentDetail,
-  setCachedStudentDetail,
-} from "./helper/cache.js";
+  GENERATION_PREFIX,
+  HTTP_TIMEOUT,
+  HTTP_STATUS,
+} from "./config/constants.js";
+import { processBatchNIMs } from "./services/batchProcessor.js";
 
-const UMBY = "UNIVERSITAS MERCU BUANA YOGYAKARTA";
-
+/**
+ * Welcome endpoint handler
+ * @param {Object} _req - Express request object (unused)
+ * @param {Object} res - Express response object
+ * @returns {Object} Welcome message with API routes
+ */
 export const welcome = (_req, res) => {
   return successResponse(res, {
     msg: "My UMBY Profile API!",
@@ -27,22 +32,40 @@ export const welcome = (_req, res) => {
   });
 };
 
+/**
+ * Extract generation from NIM (first 2 digits)
+ * @param {Object} params - Parameters
+ * @param {string} params.nim - Student identification number
+ * @returns {string} Generation (first 2 digits of NIM)
+ */
 const getGeneration = ({ nim }) => nim.slice(0, 2);
 
+/**
+ * Generate SIA picture URL for student
+ * @param {Object} params - Parameters
+ * @param {string} params.nim - Student identification number
+ * @returns {string} Complete URL to student picture
+ */
 const generateStudentSiaPictUrl = ({ nim }) => {
   const generation = getGeneration({ nim });
-  const url = `${env.siaUmbyBaseurl}${env.umbyPhotoPath}/20${generation}`;
+  const url = `${env.siaUmbyBaseurl}${env.umbyPhotoPath}/${GENERATION_PREFIX}${generation}`;
   const pictName = `${nim}.jpg`;
 
   return `${url}/${pictName}`;
 };
 
+/**
+ * Get student picture by NIM
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Buffer} Student picture as binary data
+ */
 export const getStudentPict = async (req, res) => {
   const { nim } = req.params;
 
   if (!/^[0-9]{9}$/.test(nim)) {
     return failedResponse(res, {
-      status: 400,
+      status: HTTP_STATUS.BAD_REQUEST,
       msg: "NIM must be exactly 9 digits",
     });
   }
@@ -53,7 +76,7 @@ export const getStudentPict = async (req, res) => {
   try {
     result = await axios.get(siaPictUrl, {
       responseType: "arraybuffer",
-      timeout: 10000,
+      timeout: HTTP_TIMEOUT,
     });
   } catch (error) {
     try {
@@ -62,12 +85,13 @@ export const getStudentPict = async (req, res) => {
         `${env.avatarBaseurl}/username?username=${code}`,
         {
           responseType: "arraybuffer",
-          timeout: 10000,
+          timeout: HTTP_TIMEOUT,
         }
       );
     } catch (fallbackError) {
+      logError('getStudentPict', fallbackError, { nim });
       return failedResponse(res, {
-        status: 404,
+        status: HTTP_STATUS.NOT_FOUND,
         msg: "Student picture not found",
       });
     }
@@ -88,52 +112,13 @@ export const getStudentPict = async (req, res) => {
   return response;
 };
 
-const searchPddiktiStudent = async ({ nim }) => {
-  // Check cache first
-  const cachedStudent = getCachedStudentSearch(nim);
-  if (cachedStudent !== undefined) {
-    return cachedStudent;
-  }
-
-  const url = `${env.pddiktiBaseurl}/pencarian/mhs/${nim} ${UMBY}`;
-
-  const result = await axios.get(encodeURI(url), {
-    headers: { Origin: env.pddiktiOrigin },
-    timeout: 10000,
-  });
-
-  const student = result.data.filter(
-    ({ nim: id, nama_pt: uni }) => id == nim && uni == UMBY
-  );
-
-  const foundStudent = student[0] || null;
-
-  // Cache the result
-  setCachedStudentSearch(nim, foundStudent);
-
-  return foundStudent;
-};
-
-const getPddiktiStudentDetail = async ({ id }) => {
-  // Check cache first
-  const cachedDetail = getCachedStudentDetail(id);
-  if (cachedDetail !== undefined) {
-    return cachedDetail;
-  }
-
-  const url = `${env.pddiktiBaseurl}/detail/mhs/${id}`;
-
-  const result = await axios.get(encodeURI(url), {
-    headers: { Origin: env.pddiktiOrigin },
-    timeout: 10000,
-  });
-
-  // Cache the result
-  setCachedStudentDetail(id, result.data);
-
-  return result.data;
-};
-
+/**
+ * Get batch student data by multiple NIMs
+ * @param {Object} req - Express request object
+ * @param {Array<string>} req.body.nims - Array of NIMs to process
+ * @param {Object} res - Express response object
+ * @returns {Object} Array of student data
+ */
 export const getStudentBatch = async (req, res) => {
   const schema = Joi.object({
     nims: Joi.array()
@@ -146,95 +131,40 @@ export const getStudentBatch = async (req, res) => {
   const { error, value } = schema.validate(req.body);
   if (error) {
     return failedResponse(res, {
-      status: 400,
+      status: HTTP_STATUS.BAD_REQUEST,
       msg: error.details[0].message,
     });
   }
 
   try {
-    // Process NIMs in smaller batches to avoid overwhelming external APIs
-    const batchSize = 10;
-    const nimBatches = [];
-
-    for (let i = 0; i < value.nims.length; i += batchSize) {
-      nimBatches.push(value.nims.slice(i, i + batchSize));
-    }
-
-    const students = [];
-
-    for (const batch of nimBatches) {
-      const batchResults = await Promise.all(
-        batch.map(async (nim) => {
-          try {
-            const student = await searchPddiktiStudent({ nim });
-            if (!student) return { found: false, nim };
-
-            const studentDetail = await getPddiktiStudentDetail({
-              id: student.id,
-            });
-
-            const pict = `${req.protocol}://${req.get(
-              "host"
-            )}/student/pict/${nim}`;
-            const gender =
-              studentDetail.jenis_kelamin == "L" ? "Male" : "Female";
-
-            return {
-              found: true,
-              nim,
-              name: student.nama,
-              university: student.nama_pt,
-              major: student.nama_prodi,
-              regist_type: studentDetail.jenis_daftar,
-              regist_date: studentDetail.tanggal_masuk,
-              gender,
-              level: studentDetail.jenjang,
-              status: studentDetail.status_saat_ini,
-              generation: studentDetail.tahun_masuk,
-              pict_url: pict,
-            };
-          } catch (error) {
-            console.error(`Error processing NIM ${nim}:`, error.message);
-            return { found: false, nim, error: "Processing failed" };
-          }
-        })
-      );
-
-      students.push(...batchResults);
-
-      // Small delay between batches to be respectful to external API
-      if (nimBatches.indexOf(batch) < nimBatches.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
+    const students = await processBatchNIMs(value.nims, req);
 
     return successResponse(res, {
       msg: "Successfully obtained student data",
       data: students,
     });
   } catch (error) {
-    console.error("Error in getStudentBatch:", {
-      message: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString(),
+    logError('getStudentBatch', error, { 
+      nimCount: value.nims.length,
+      nims: value.nims 
     });
 
     if (error.code === "ECONNABORTED") {
       return failedResponse(res, {
-        status: 408,
+        status: HTTP_STATUS.TIMEOUT,
         msg: "Request timeout while fetching student data",
       });
     }
 
-    if (error.response && error.response.status === 404) {
+    if (error.response && error.response.status === HTTP_STATUS.NOT_FOUND) {
       return failedResponse(res, {
-        status: 404,
+        status: HTTP_STATUS.NOT_FOUND,
         msg: "Student data service unavailable",
       });
     }
 
     return failedResponse(res, {
-      status: 500,
+      status: HTTP_STATUS.INTERNAL_SERVER_ERROR,
       msg: "Failed to get student data",
     });
   }
