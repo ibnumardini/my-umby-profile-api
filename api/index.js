@@ -11,6 +11,7 @@ const app = express();
 app.use(helmet());
 app.use(compression()); // Enable gzip compression
 app.use(express.json({ limit: "10mb" }));
+app.set('trust proxy', 1);
 app.use(rateLimiter.limiter);
 
 app.use(cors("*"));
