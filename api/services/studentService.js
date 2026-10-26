@@ -28,7 +28,7 @@ export const searchPddiktiStudent = async ({ nim }) => {
     timeout: HTTP_TIMEOUT,
   });
 
-  const student = result?.data?.mahasiswa?.filter(
+  const student = result?.data?.data?.filter(
     ({ nim: id, nama_pt: uni }) => id == nim && uni == UNIVERSITY_NAME
   );
 
