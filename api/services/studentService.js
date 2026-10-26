@@ -24,7 +24,7 @@ export const searchPddiktiStudent = async ({ nim }) => {
   const url = `${env.pddiktiBaseurl}/pencarian/mhs/${nim} ${UNIVERSITY_NAME}`;
 
   const result = await axios.get(encodeURI(url), {
-    headers: { Origin: env.pddiktiOrigin },
+    headers: { Origin: env.pddiktiOrigin, "sec-fetch-site": "same-site" },
     timeout: HTTP_TIMEOUT,
   });
 
